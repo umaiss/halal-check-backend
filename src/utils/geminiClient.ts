@@ -26,7 +26,7 @@ console.log('GEMINI_API_KEY', GEMINI_API_KEY);
 //     throw new Error("GEMINI_API_KEY not found in environment variables.");
 // }
 
-export const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+export const ai = new GoogleGenAI({ apiKey: "AIzaSyCT-3rXa-cI1BxGcpIuX2jxPhqYFaXXqEc" });
 
 // Define the desired JSON response structure (Schema)
 export const halalSchema = {
