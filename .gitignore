@@ -39,4 +39,4 @@ appspec.yml
 npmbuild.sh
 
 .env
-.env.dev
+.env.local

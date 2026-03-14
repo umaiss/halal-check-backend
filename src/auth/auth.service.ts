@@ -80,4 +80,10 @@ export class AuthService {
             access_token: token,
         };
     }
+
+    async logout() {
+        return {
+            message: 'Logout successful',
+        };
+    }
 }
