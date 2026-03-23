@@ -16,4 +16,8 @@ export class CheckHalalDto {
     @IsOptional()
     @IsUrl()
     ingredients_image?: string;
+
+    @IsOptional()
+    @IsString()
+    ingredients_hash?: string;
 }

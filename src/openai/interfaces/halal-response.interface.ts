@@ -9,4 +9,7 @@ export interface HalalCheckResponse {
     overall_status: 'HALAL' | 'HARAM' | 'MUSBOOH';
     reasoning: string;
     ingredients_analysis: IngredientAnalysis[];
+    front_image?: string;
+    back_image?: string;
+    ingredients_image?: string;
 }
