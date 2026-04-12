@@ -1,6 +1,7 @@
 import { Injectable, ConflictException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
+import { DatabaseService } from '../database/database.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcrypt';
@@ -9,6 +10,7 @@ import * as bcrypt from 'bcrypt';
 export class AuthService {
     constructor(
         private readonly usersService: UsersService,
+        private readonly databaseService: DatabaseService,
         private readonly jwtService: JwtService,
     ) { }
 
@@ -76,6 +78,41 @@ export class AuthService {
                 id: user.id,
                 name: user.name,
                 email: user.email,
+            },
+            access_token: token,
+        };
+    }
+
+    async adminLogin(loginDto: LoginDto) {
+        const { email, password } = loginDto;
+
+        // 1. Find admin user by email directly from DB
+        const result = await this.databaseService.query(
+            'SELECT * FROM admin_users WHERE email = $1',
+            [email]
+        );
+        const adminUser = result.rows[0];
+
+        if (!adminUser) {
+            throw new UnauthorizedException('Invalid admin email or password');
+        }
+
+        // 2. Compare passwords
+        const isPasswordMatching = await bcrypt.compare(password, adminUser.password);
+        if (!isPasswordMatching) {
+            throw new UnauthorizedException('Invalid admin email or password');
+        }
+
+        // 3. Generate JWT token with admin role
+        const payload = { sub: adminUser.id, email: adminUser.email, role: 'admin' };
+        const token = await this.jwtService.signAsync(payload);
+
+        return {
+            message: 'Admin login successful',
+            user: {
+                id: adminUser.id,
+                email: adminUser.email,
+                role: 'admin',
             },
             access_token: token,
         };

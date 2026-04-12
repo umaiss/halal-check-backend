@@ -19,6 +19,12 @@ export class AuthController {
         return await this.authService.login(loginDto);
     }
 
+    @Post('admin/login')
+    @HttpCode(HttpStatus.OK)
+    async adminLogin(@Body() loginDto: LoginDto) {
+        return await this.authService.adminLogin(loginDto);
+    }
+
     @Post('logout')
     @HttpCode(HttpStatus.OK)
     async logout() {
