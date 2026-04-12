@@ -86,7 +86,7 @@ export class AuthService {
     async adminLogin(loginDto: LoginDto) {
         const { email, password } = loginDto;
 
-        // 1. Find admin user by email directly from DB
+        // 1. Find admin user by email directly from DB (includes role column)
         const result = await this.databaseService.query(
             'SELECT * FROM admin_users WHERE email = $1',
             [email]
@@ -103,8 +103,8 @@ export class AuthService {
             throw new UnauthorizedException('Invalid admin email or password');
         }
 
-        // 3. Generate JWT token with admin role
-        const payload = { sub: adminUser.id, email: adminUser.email, role: 'admin' };
+        // 3. Generate JWT token with the actual role from DB (admin | assignee)
+        const payload = { sub: adminUser.id, email: adminUser.email, role: adminUser.role };
         const token = await this.jwtService.signAsync(payload);
 
         return {
@@ -112,7 +112,7 @@ export class AuthService {
             user: {
                 id: adminUser.id,
                 email: adminUser.email,
-                role: 'admin',
+                role: adminUser.role,
             },
             access_token: token,
         };
