@@ -3,6 +3,7 @@ import { OpenAIService } from '../openai/openai.service';
 import { DatabaseService } from '../database/database.service';
 import { HalalCheckResponse } from '../openai/interfaces/halal-response.interface';
 import { CheckHalalDto } from './dto/check-halal.dto';
+import { ImproveCheckDto } from './dto/improve-check.dto';
 
 @Injectable()
 export class HalalService {
@@ -12,13 +13,27 @@ export class HalalService {
     ) { }
 
     async checkHalalStatus(checkHalalDto: CheckHalalDto, userId?: number): Promise<HalalCheckResponse & { id?: number }> {
-        const { text, ingredients_hash } = checkHalalDto;
+        const { text, ingredients_hash, product_name } = checkHalalDto;
 
-        if (ingredients_hash) {
+        if (ingredients_hash || product_name) {
             try {
-                // Check if the exact ingredients are already analyzed
-                const query = `SELECT * FROM halal_checks WHERE ingredients_hash = $1 LIMIT 1`;
-                const dbResult = await this.databaseService.query(query, [ingredients_hash]);
+                // Check if the exact ingredients are already analyzed OR the product name matches
+                let query = `SELECT * FROM halal_checks WHERE `;
+                const params: any[] = [];
+                
+                if (ingredients_hash && product_name) {
+                    query += `ingredients_hash = $1 OR product_name = $2`;
+                    params.push(ingredients_hash, product_name);
+                } else if (ingredients_hash) {
+                    query += `ingredients_hash = $1`;
+                    params.push(ingredients_hash);
+                } else {
+                    query += `product_name = $1`;
+                    params.push(product_name);
+                }
+                
+                query += ` LIMIT 1`;
+                const dbResult = await this.databaseService.query(query, params);
 
                 if (dbResult.rows && dbResult.rows.length > 0) {
                     const row = dbResult.rows[0];
@@ -35,9 +50,13 @@ export class HalalService {
                         ingredients_analysis: typeof row.ingredients_analysis === 'string'
                             ? JSON.parse(row.ingredients_analysis)
                             : row.ingredients_analysis,
-                        front_image: row.front_image,
-                        back_image: row.back_image,
-                        ingredients_image: row.ingredients_image
+                        ingredients_image: row.ingredients_image,
+                        product_name: row.product_name,
+                        barcode_image: row.barcode_image,
+                        manufacturer_image: row.manufacturer_image,
+                        additional_images: typeof row.additional_images === 'string'
+                            ? JSON.parse(row.additional_images)
+                            : row.additional_images,
                     } as HalalCheckResponse & { id: number };
                 }
             } catch (err) {
@@ -50,7 +69,7 @@ export class HalalService {
 
         try {
             const savedResult = await this.saveCheckResult(checkHalalDto, result);
-            
+
             if (userId) {
                 await this.saveScanHistory(userId, savedResult.id);
             }
@@ -69,7 +88,7 @@ export class HalalService {
     }
 
     private async saveCheckResult(checkHalalDto: CheckHalalDto, result: HalalCheckResponse): Promise<{ id: number }> {
-        const { text, front_image, back_image, ingredients_image, ingredients_hash } = checkHalalDto;
+        const { text, front_image, back_image, ingredients_image, ingredients_hash, product_name } = checkHalalDto;
         const query = `
             INSERT INTO halal_checks (
                 ingredient_text, 
@@ -79,9 +98,10 @@ export class HalalService {
                 front_image,
                 back_image,
                 ingredients_image,
-                ingredients_hash
+                ingredients_hash,
+                product_name
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING id
         `;
         const values = [
@@ -92,7 +112,8 @@ export class HalalService {
             front_image || null,
             back_image || null,
             ingredients_image || null,
-            ingredients_hash || null
+            ingredients_hash || null,
+            product_name || null
         ];
 
         const dbResult = await this.databaseService.query(query, values);
@@ -114,6 +135,7 @@ export class HalalService {
         const query = `
             SELECT 
                 h.id,
+                h.product_name,
                 h.ingredient_text,
                 h.overall_status,
                 h.reasoning,
@@ -121,6 +143,9 @@ export class HalalService {
                 h.front_image,
                 h.back_image,
                 h.ingredients_image,
+                h.barcode_image,
+                h.manufacturer_image,
+                h.additional_images,
                 h.created_at as analyzed_at,
                 ush.created_at as saved_at
             FROM user_scan_history ush
@@ -130,13 +155,44 @@ export class HalalService {
         `;
         const values = [userId];
         const result = await this.databaseService.query(query, values);
-        
+
         return result.rows.map(row => ({
             ...row,
             ingredients_analysis: typeof row.ingredients_analysis === 'string'
                 ? JSON.parse(row.ingredients_analysis)
-                : row.ingredients_analysis
+                : row.ingredients_analysis,
+            additional_images: typeof row.additional_images === 'string'
+                ? JSON.parse(row.additional_images)
+                : row.additional_images,
         }));
     }
-}
 
+    async improveCheck(id: number, improveCheckDto: ImproveCheckDto) {
+        const { barcode_image, manufacturer_image, additional_images } = improveCheckDto;
+        
+        const query = `
+            UPDATE halal_checks 
+            SET 
+                barcode_image = COALESCE($1, barcode_image),
+                manufacturer_image = COALESCE($2, manufacturer_image),
+                additional_images = COALESCE($3, additional_images)
+            WHERE id = $4
+            RETURNING *
+        `;
+        
+        const values = [
+            barcode_image || null,
+            manufacturer_image || null,
+            additional_images ? JSON.stringify(additional_images) : null,
+            id
+        ];
+        
+        const result = await this.databaseService.query(query, values);
+        
+        if (result.rows.length === 0) {
+            throw new Error('Product not found');
+        }
+        
+        return result.rows[0];
+    }
+}

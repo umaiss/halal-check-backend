@@ -1,7 +1,8 @@
-import { Controller, Post, Get, Body, HttpException, HttpStatus, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Body, HttpException, HttpStatus, UseGuards, Request, Patch, Param, ParseIntPipe } from '@nestjs/common';
 import { HalalService } from './halal.service';
 import { CheckHalalDto } from './dto/check-halal.dto';
 import { SaveHistoryDto } from './dto/save-history.dto';
+import { ImproveCheckDto } from './dto/improve-check.dto';
 import { HalalCheckResponse } from '../openai/interfaces/halal-response.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
@@ -62,6 +63,24 @@ export class HalalController {
             throw new HttpException(
                 {
                     error: 'Failed to retrieve scan history.',
+                    details: (error as Error).message,
+                },
+                HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
+    @Patch(':id/improve')
+    async improveCheck(
+        @Param('id', ParseIntPipe) id: number,
+        @Body() improveCheckDto: ImproveCheckDto
+    ) {
+        try {
+            return await this.halalService.improveCheck(id, improveCheckDto);
+        } catch (error) {
+            throw new HttpException(
+                {
+                    error: 'Failed to update product with improvement data.',
                     details: (error as Error).message,
                 },
                 HttpStatus.INTERNAL_SERVER_ERROR,

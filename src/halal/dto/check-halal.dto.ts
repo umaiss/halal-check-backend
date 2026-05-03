@@ -20,4 +20,8 @@ export class CheckHalalDto {
     @IsOptional()
     @IsString()
     ingredients_hash?: string;
+
+    @IsOptional()
+    @IsString()
+    product_name?: string;
 }
