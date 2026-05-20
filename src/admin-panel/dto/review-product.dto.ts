@@ -1,4 +1,4 @@
-import { IsEnum, IsString, IsNotEmpty } from 'class-validator';
+import { IsEnum, IsString, IsNotEmpty, IsArray, IsOptional } from 'class-validator';
 
 export enum ReviewStatus {
   PENDING = 'pending',
@@ -7,6 +7,10 @@ export enum ReviewStatus {
   MUSHBOOH = 'mushbooh',
 }
 
+/**
+ * DTO for reviewing a product.
+ * Includes optional attachments URLs array for image uploads.
+ */
 export class ReviewProductDto {
   @IsEnum(ReviewStatus)
   @IsNotEmpty()
@@ -15,4 +19,9 @@ export class ReviewProductDto {
   @IsString()
   @IsNotEmpty()
   reasoning: string;
+
+  @IsArray()
+  @IsOptional()
+  @IsString({ each: true })
+  attachments?: string[];
 }

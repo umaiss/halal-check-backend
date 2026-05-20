@@ -50,6 +50,8 @@ export class HalalService {
                         ingredients_analysis: typeof row.ingredients_analysis === 'string'
                             ? JSON.parse(row.ingredients_analysis)
                             : row.ingredients_analysis,
+                        front_image: row.front_image,
+                        back_image: row.back_image,
                         ingredients_image: row.ingredients_image,
                         product_name: row.product_name,
                         barcode_image: row.barcode_image,

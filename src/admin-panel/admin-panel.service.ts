@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { createClient } from '@supabase/supabase-js';
+import * as fs from 'fs';
 import { ReviewProductDto } from './dto/review-product.dto';
+import * as path from 'path';
 
 @Injectable()
 export class AdminPanelService {
@@ -26,6 +29,7 @@ export class AdminPanelService {
                 h.created_at,
                 h.assigned_to_id,
                 h.status,
+                h.reviewed_at,
                 a.email AS reviewer_email
             FROM halal_checks h
             LEFT JOIN admin_users a ON a.id = h.assigned_to_id
@@ -45,7 +49,10 @@ export class AdminPanelService {
             ...row,
             ingredients_analysis: typeof row.ingredients_analysis === 'string'
                 ? JSON.parse(row.ingredients_analysis)
-                : row.ingredients_analysis
+                : row.ingredients_analysis,
+            additional_images: typeof row.additional_images === 'string'
+                ? JSON.parse(row.additional_images)
+                : row.additional_images,
         }));
     }
 
@@ -65,9 +72,11 @@ export class AdminPanelService {
                 h.barcode_image,
                 h.manufacturer_image,
                 h.additional_images,
+                h.review_attachments,
                 h.created_at,
                 h.assigned_to_id,
                 h.status,
+                h.reviewed_at,
                 a.email AS reviewer_email
             FROM halal_checks h
             LEFT JOIN admin_users a ON a.id = h.assigned_to_id
@@ -89,7 +98,10 @@ export class AdminPanelService {
             ...row,
             ingredients_analysis: typeof row.ingredients_analysis === 'string'
                 ? JSON.parse(row.ingredients_analysis)
-                : row.ingredients_analysis
+                : row.ingredients_analysis,
+            additional_images: typeof row.additional_images === 'string'
+                ? JSON.parse(row.additional_images)
+                : row.additional_images,
         };
     }
 
@@ -120,7 +132,10 @@ export class AdminPanelService {
                 manufacturer_image,
                 additional_images,
                 front_image,
-                created_at
+                back_image,
+                ingredients_image,
+                created_at,
+                reviewed_at
             FROM halal_checks
             WHERE assigned_to_id = $1
               AND status != 'pending'
@@ -161,7 +176,10 @@ export class AdminPanelService {
                 h.manufacturer_image,
                 h.additional_images,
                 h.front_image,
+                h.back_image,
+                h.ingredients_image,
                 h.created_at,
+                h.reviewed_at,
                 a.email AS reviewer_email
             FROM halal_checks h
             LEFT JOIN admin_users a ON a.id = h.assigned_to_id
@@ -230,22 +248,118 @@ export class AdminPanelService {
             }
         }
 
-        const { status, reasoning } = reviewDto;
+        const { status, reasoning, attachments } = reviewDto;
 
         // overall_status is used by the mobile app — update it to reflect the final verdict.
         const overallStatus = status.toUpperCase() === 'MUSHBOOH' ? 'MUSBOOH' : status.toUpperCase();
 
-        const updateQuery = `
-            UPDATE halal_checks 
-            SET 
-                status = $1,
-                reasoning = $2,
-                overall_status = $3
-            WHERE id = $4
-            RETURNING *
-        `;
-        const updateResult = await this.databaseService.query(updateQuery, [status, reasoning, overallStatus, id]);
+        let updateResult;
+        if (attachments !== undefined) {
+            const updateQuery = `
+                UPDATE halal_checks 
+                SET 
+                    status = $1,
+                    reasoning = $2,
+                    overall_status = $3,
+                    reviewed_at = CURRENT_TIMESTAMP,
+                    review_attachments = $5
+                WHERE id = $4
+                RETURNING *
+            `;
+            updateResult = await this.databaseService.query(updateQuery, [status, reasoning, overallStatus, id, attachments]);
+        } else {
+            const updateQuery = `
+                UPDATE halal_checks 
+                SET 
+                    status = $1,
+                    reasoning = $2,
+                    overall_status = $3,
+                    reviewed_at = CURRENT_TIMESTAMP
+                WHERE id = $4
+                RETURNING *
+            `;
+            updateResult = await this.databaseService.query(updateQuery, [status, reasoning, overallStatus, id]);
+        }
 
         return { message: 'Product review submitted successfully', product: updateResult.rows[0] };
     }
+
+    async uploadAttachments(id: number, files: Array<Express.Multer.File>) {
+        if (!files || files.length === 0) {
+            return { message: 'No files provided', attachments: [] };
+        }
+
+        // Fetch product to get product_name
+        const selectQuery = `SELECT product_name FROM halal_checks WHERE id = $1`;
+        const selectResult = await this.databaseService.query(selectQuery, [id]);
+        let productNameClean = `product_${id}`;
+        if (selectResult.rows.length > 0 && selectResult.rows[0].product_name) {
+            productNameClean = selectResult.rows[0].product_name
+                .toLowerCase()
+                .trim()
+                .replace(/[^a-z0-9-_]/g, '_')
+                .replace(/_+/g, '_');
+        }
+
+        // Initialize Supabase client
+        const supabaseUrl = process.env.SUPABASE_URL;
+        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+        if (!supabaseUrl || !supabaseKey) {
+            throw new Error('Supabase configuration missing (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY)');
+        }
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        // Use existing 'halal-images' bucket with a subfolder for review attachments
+        const bucket = 'halal-images';
+        const uploadedUrls: string[] = [];
+        for (const file of files) {
+            // Use sanitized product name instead of ID
+            const filePath = `review-attachments/${productNameClean}/${Date.now()}_${file.originalname}`;
+            // Read file buffer (if stored on disk) or use buffer directly
+            const fileBuffer = file.buffer ?? fs.readFileSync(file.path);
+            // Upload the file to Supabase Storage
+            const { error } = await supabase.storage.from(bucket).upload(filePath, fileBuffer, {
+                contentType: file.mimetype,
+                upsert: false,
+            });
+            if (error) {
+                throw new Error(`Failed to upload ${file.originalname}: ${error.message}`);
+            }
+            // Get the public URL of the uploaded file
+            const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(filePath);
+            const publicURL = publicData.publicUrl;
+            uploadedUrls.push(publicURL);
+        }
+        // Update the product's review_attachments column by concatenating new URLs
+        const updateQuery = `
+            UPDATE halal_checks
+            SET review_attachments = COALESCE(review_attachments, ARRAY[]::TEXT[]) || $1
+            WHERE id = $2
+            RETURNING *
+        `;
+        const updateResult = await this.databaseService.query(updateQuery, [uploadedUrls, id]);
+        return { message: 'Attachments uploaded successfully', attachments: uploadedUrls, product: updateResult.rows[0] };
+    }
+
+    // Admin stats endpoint
+    async getAdminStats() {
+        const query = `
+            SELECT
+                COUNT(*) AS total_count,
+                COUNT(*) FILTER (WHERE status = 'halal') AS halal_count,
+                COUNT(*) FILTER (WHERE status = 'haram') AS haram_count,
+                COUNT(*) FILTER (WHERE status = 'mushbooh') AS mushbooh_count,
+                COUNT(*) FILTER (WHERE status = 'pending') AS pending_count
+            FROM halal_checks
+        `;
+        const result = await this.databaseService.query(query);
+        const row = result.rows[0];
+        return {
+            total: Number(row.total_count),
+            halal: Number(row.halal_count),
+            haram: Number(row.haram_count),
+            mushbooh: Number(row.mushbooh_count),
+            pending: Number(row.pending_count),
+        };
+    }
 }
+

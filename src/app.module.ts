@@ -6,6 +6,8 @@ import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { AdminPanelModule } from './admin-panel/admin-panel.module';
+import { MulterModule } from '@nestjs/platform-express';
+import { join } from 'path';
 
 @Module({
     imports: [
@@ -18,6 +20,9 @@ import { AdminPanelModule } from './admin-panel/admin-panel.module';
         AuthModule,
         UsersModule,
         AdminPanelModule,
+        MulterModule.register({
+          dest: join(__dirname, '..', 'uploads', 'review_attachments'),
+        }),
     ],
     controllers: [AppController],
 })

@@ -1,11 +1,13 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards, Req } from '@nestjs/common';
+
+import { Controller, Get, Post, Patch, Param, Body, UseGuards, Req, UseInterceptors, UploadedFiles } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { AdminPanelService } from './admin-panel.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { ReviewProductDto } from './dto/review-product.dto';
 
 @Controller('admin-panel')
-@UseGuards(JwtAuthGuard, AdminGuard)
+@UseGuards(JwtAuthGuard)
 export class AdminPanelController {
     constructor(private readonly adminPanelService: AdminPanelService) { }
 
@@ -24,8 +26,14 @@ export class AdminPanelController {
         return this.adminPanelService.getMyStats(req.user.userId);
     }
 
+    @Get('stats')
+    @UseGuards(JwtAuthGuard, AdminGuard)
+    async getAdminStats() {
+        return this.adminPanelService.getAdminStats();
+    }
+
     @Get('all-reviews')
-    @UseGuards(AdminGuard)
+    @UseGuards(JwtAuthGuard, AdminGuard)
     async getAllReviews() {
         return this.adminPanelService.getAllReviews();
     }
@@ -43,5 +51,15 @@ export class AdminPanelController {
         @Req() req: any
     ) {
         return this.adminPanelService.reviewProduct(Number(id), req.user.userId, req.user.role, reviewDto);
+    }
+
+    @Post('scanned-products/:id/upload')
+    @UseInterceptors(FilesInterceptor('files'))
+    async uploadAttachments(
+        @Param('id') id: string,
+        @UploadedFiles() files: Array<Express.Multer.File>,
+        @Req() req: any
+    ) {
+        return this.adminPanelService.uploadAttachments(Number(id), files);
     }
 }
