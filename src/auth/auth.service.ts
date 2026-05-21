@@ -5,6 +5,7 @@ import { DatabaseService } from '../database/database.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcrypt';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService {
@@ -12,7 +13,27 @@ export class AuthService {
         private readonly usersService: UsersService,
         private readonly databaseService: DatabaseService,
         private readonly jwtService: JwtService,
+        private readonly configService: ConfigService,
     ) { }
+
+    private async generateTokens(userId: number, email: string) {
+        const payload = { sub: userId, email };
+
+        const accessToken = await this.jwtService.signAsync(payload, {
+            secret: this.configService.get<string>('JWT_SECRET'),
+            expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m') as any,
+        });
+
+        const refreshToken = await this.jwtService.signAsync({ sub: userId }, {
+            secret: this.configService.get<string>('JWT_REFRESH_SECRET') || 'super-secret-refresh-key-change-this-in-production',
+            expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION', '60d') as any,
+        });
+
+        return {
+            access_token: accessToken,
+            refresh_token: refreshToken,
+        };
+    }
 
     async signup(signupDto: SignupDto) {
         // ... (preserving existing signup logic)
@@ -31,9 +52,8 @@ export class AuthService {
             });
             console.log('User created successfully:', newUser.id);
             try {
-                const payload = { sub: newUser.id, email: newUser.email };
-                const token = await this.jwtService.signAsync(payload);
-                console.log('JWT generated successfully');
+                const tokens = await this.generateTokens(newUser.id, newUser.email);
+                console.log('JWT and Refresh token generated successfully');
                 return {
                     message: 'User registered successfully',
                     user: {
@@ -41,7 +61,7 @@ export class AuthService {
                         name: newUser.name,
                         email: newUser.email,
                     },
-                    access_token: token,
+                    ...tokens,
                 };
             } catch (jwtError) {
                 console.error('JWT Signing Error:', jwtError);
@@ -68,9 +88,8 @@ export class AuthService {
             throw new UnauthorizedException('Invalid email or password');
         }
 
-        // 3. Generate JWT token
-        const payload = { sub: user.id, email: user.email };
-        const token = await this.jwtService.signAsync(payload);
+        // 3. Generate JWT token and refresh token
+        const tokens = await this.generateTokens(user.id, user.email);
 
         return {
             message: 'Login successful',
@@ -79,8 +98,39 @@ export class AuthService {
                 name: user.name,
                 email: user.email,
             },
-            access_token: token,
+            ...tokens,
         };
+    }
+
+    async refresh(refreshToken: string) {
+        if (!refreshToken) {
+            throw new BadRequestException('Refresh token is required');
+        }
+        try {
+            const payload = await this.jwtService.verifyAsync(refreshToken, {
+                secret: this.configService.get<string>('JWT_REFRESH_SECRET') || 'super-secret-refresh-key-change-this-in-production',
+            });
+
+            const user = await this.usersService.findOneById(payload.sub);
+            if (!user) {
+                throw new UnauthorizedException('User not found');
+            }
+
+            const tokens = await this.generateTokens(user.id, user.email);
+
+            return {
+                message: 'Token refreshed successfully',
+                user: {
+                    id: user.id,
+                    name: user.name,
+                    email: user.email,
+                },
+                ...tokens,
+            };
+        } catch (error) {
+            console.error('Refresh Token Error:', error);
+            throw new UnauthorizedException('Invalid or expired refresh token');
+        }
     }
 
     async adminLogin(loginDto: LoginDto) {
@@ -105,7 +155,10 @@ export class AuthService {
 
         // 3. Generate JWT token with the actual role from DB (admin | assignee)
         const payload = { sub: adminUser.id, email: adminUser.email, role: adminUser.role };
-        const token = await this.jwtService.signAsync(payload);
+        const token = await this.jwtService.signAsync(payload, {
+            secret: this.configService.get<string>('JWT_SECRET'),
+            expiresIn: this.configService.get<string>('JWT_EXPIRATION', '15m') as any,
+        });
 
         return {
             message: 'Admin login successful',

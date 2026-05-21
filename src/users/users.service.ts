@@ -12,6 +12,12 @@ export class UsersService {
         return result.rows.length > 0 ? result.rows[0] : null;
     }
 
+    async findOneById(id: number): Promise<User | null> {
+        const query = 'SELECT * FROM users WHERE id = $1';
+        const result = await this.databaseService.query(query, [id]);
+        return result.rows.length > 0 ? result.rows[0] : null;
+    }
+
     async create(user: Partial<User>): Promise<User> {
         const query = `
             INSERT INTO users (name, email, password)
