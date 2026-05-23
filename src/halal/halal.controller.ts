@@ -22,19 +22,34 @@ export class HalalController {
      * The mobile app calls this FIRST, then passes the returned URLs
      * in the `front_image`, `back_image`, etc. fields of POST /check-halal.
      *
-     * Form-data field name: "images"
+     * Form-data fields:
+     *   - "images"      : image file(s) (required, up to 5)
+     *   - "productName" : product name string (optional, used for S3 folder)
+     *
+     * S3 key structure: product-images/{product-name}/{timestamp}_{filename}
      */
     @Post('upload-image')
     @UseInterceptors(FilesInterceptor('images', 5))
-    async uploadImages(@UploadedFiles() files: Array<Express.Multer.File>) {
+    async uploadImages(
+        @UploadedFiles() files: Array<Express.Multer.File>,
+        @Body('productName') productName?: string,
+    ) {
         if (!files || files.length === 0) {
             throw new HttpException(
                 { error: 'No image files provided. Use multipart field name "images".' },
                 HttpStatus.BAD_REQUEST,
             );
         }
+
+        // Sanitise product name into a safe folder segment
+        const safeProductName = productName
+            ? productName.toLowerCase().trim().replace(/[^a-z0-9-_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '')
+            : 'unnamed_product';
+
+        const folder = `product-images/${safeProductName}`;
+
         try {
-            const urls = await this.s3Service.uploadFiles('product-images', files);
+            const urls = await this.s3Service.uploadFiles(folder, files);
             return { urls };
         } catch (error) {
             throw new HttpException(
