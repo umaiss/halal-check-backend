@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
-import { createClient } from '@supabase/supabase-js';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import * as fs from 'fs';
 import { ReviewProductDto } from './dto/review-product.dto';
 import * as path from 'path';
@@ -301,34 +301,45 @@ export class AdminPanelService {
                 .replace(/_+/g, '_');
         }
 
-        // Initialize Supabase client
-        const supabaseUrl = process.env.SUPABASE_URL;
-        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-        if (!supabaseUrl || !supabaseKey) {
-            throw new Error('Supabase configuration missing (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY)');
+        // Initialize AWS S3 client
+        const awsRegion = process.env.AWS_REGION;
+        const awsAccessKeyId = process.env.AWS_ACCESS_KEY_ID;
+        const awsSecretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+        const bucket = process.env.AWS_S3_BUCKET;
+
+        if (!awsRegion || !awsAccessKeyId || !awsSecretAccessKey || !bucket) {
+            throw new Error('AWS S3 configuration missing. Ensure AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_S3_BUCKET are set.');
         }
-        const supabase = createClient(supabaseUrl, supabaseKey);
-        // Use existing 'halal-images' bucket with a subfolder for review attachments
-        const bucket = 'halal-images';
+
+        const s3 = new S3Client({
+            region: awsRegion,
+            credentials: {
+                accessKeyId: awsAccessKeyId,
+                secretAccessKey: awsSecretAccessKey,
+            },
+        });
+
         const uploadedUrls: string[] = [];
+
         for (const file of files) {
             // Use sanitized product name instead of ID
             const filePath = `review-attachments/${productNameClean}/${Date.now()}_${file.originalname}`;
             // Read file buffer (if stored on disk) or use buffer directly
             const fileBuffer = file.buffer ?? fs.readFileSync(file.path);
-            // Upload the file to Supabase Storage
-            const { error } = await supabase.storage.from(bucket).upload(filePath, fileBuffer, {
-                contentType: file.mimetype,
-                upsert: false,
-            });
-            if (error) {
-                throw new Error(`Failed to upload ${file.originalname}: ${error.message}`);
-            }
-            // Get the public URL of the uploaded file
-            const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(filePath);
-            const publicURL = publicData.publicUrl;
+
+            // Upload the file to AWS S3
+            await s3.send(new PutObjectCommand({
+                Bucket: bucket,
+                Key: filePath,
+                Body: fileBuffer,
+                ContentType: file.mimetype,
+            }));
+
+            // Construct the public URL (bucket must have public read policy)
+            const publicURL = `https://${bucket}.s3.${awsRegion}.amazonaws.com/${filePath}`;
             uploadedUrls.push(publicURL);
         }
+
         // Update the product's review_attachments column by concatenating new URLs
         const updateQuery = `
             UPDATE halal_checks

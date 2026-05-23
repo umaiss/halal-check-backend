@@ -21,10 +21,7 @@ export class DatabaseService {
             connectionTimeoutMillis: this.configService.get<number>('DB_CONNECTION_TIMEOUT', 10000),
 
             // SSL configuration for production
-            ssl:
-                this.configService.get<string>('NODE_ENV') === 'production'
-                    ? { rejectUnauthorized: false }
-                    : false,
+            ssl: false,
 
             statement_timeout: this.configService.get<number>('DB_STATEMENT_TIMEOUT', 30000),
             query_timeout: this.configService.get<number>('DB_QUERY_TIMEOUT', 30000),
