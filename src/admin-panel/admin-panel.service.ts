@@ -1,13 +1,15 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Service } from '../s3/s3.service';
 import * as fs from 'fs';
 import { ReviewProductDto } from './dto/review-product.dto';
-import * as path from 'path';
 
 @Injectable()
 export class AdminPanelService {
-    constructor(private readonly databaseService: DatabaseService) { }
+    constructor(
+        private readonly databaseService: DatabaseService,
+        private readonly s3Service: S3Service,
+    ) { }
 
     async getAllScannedProducts(user: any) {
         // JOIN admin_users so the admin can see which assignee reviewed each product
@@ -289,7 +291,7 @@ export class AdminPanelService {
             return { message: 'No files provided', attachments: [] };
         }
 
-        // Fetch product to get product_name
+        // Fetch product to get product_name for the S3 folder path
         const selectQuery = `SELECT product_name FROM halal_checks WHERE id = $1`;
         const selectResult = await this.databaseService.query(selectQuery, [id]);
         let productNameClean = `product_${id}`;
@@ -301,44 +303,9 @@ export class AdminPanelService {
                 .replace(/_+/g, '_');
         }
 
-        // Initialize AWS S3 client
-        const awsRegion = process.env.AWS_REGION;
-        const awsAccessKeyId = process.env.AWS_ACCESS_KEY_ID;
-        const awsSecretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
-        const bucket = process.env.AWS_S3_BUCKET;
-
-        if (!awsRegion || !awsAccessKeyId || !awsSecretAccessKey || !bucket) {
-            throw new Error('AWS S3 configuration missing. Ensure AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_S3_BUCKET are set.');
-        }
-
-        const s3 = new S3Client({
-            region: awsRegion,
-            credentials: {
-                accessKeyId: awsAccessKeyId,
-                secretAccessKey: awsSecretAccessKey,
-            },
-        });
-
-        const uploadedUrls: string[] = [];
-
-        for (const file of files) {
-            // Use sanitized product name instead of ID
-            const filePath = `review-attachments/${productNameClean}/${Date.now()}_${file.originalname}`;
-            // Read file buffer (if stored on disk) or use buffer directly
-            const fileBuffer = file.buffer ?? fs.readFileSync(file.path);
-
-            // Upload the file to AWS S3
-            await s3.send(new PutObjectCommand({
-                Bucket: bucket,
-                Key: filePath,
-                Body: fileBuffer,
-                ContentType: file.mimetype,
-            }));
-
-            // Construct the public URL (bucket must have public read policy)
-            const publicURL = `https://${bucket}.s3.${awsRegion}.amazonaws.com/${filePath}`;
-            uploadedUrls.push(publicURL);
-        }
+        // Upload all files to S3 via the shared S3Service
+        const folder = `review-attachments/${productNameClean}`;
+        const uploadedUrls = await this.s3Service.uploadFiles(folder, files);
 
         // Update the product's review_attachments column by concatenating new URLs
         const updateQuery = `
