@@ -15,6 +15,13 @@ async function bootstrap() {
     // CORS is handled by Nginx - disabled here
     // app.enableCors({...});
 
+    app.enableCors({
+        origin: '*',
+        methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+        credentials: true,
+    });
+
     // Set global prefix for all routes
     app.setGlobalPrefix('api');
 
