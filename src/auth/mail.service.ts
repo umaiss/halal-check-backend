@@ -37,7 +37,7 @@ export class MailService {
                 await this.transporter.sendMail({
                     from,
                     to: email,
-                    subject: 'Password Reset Verification Code - Halal App',
+                    subject: 'Password Reset Verification Code - Scan Bazar App',
                     text: `Your password reset verification code is: ${code}. This code will expire in 15 minutes.`,
                     html: `
                         <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
