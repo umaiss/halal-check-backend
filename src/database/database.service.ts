@@ -1,9 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Pool, PoolConfig } from 'pg';
 
 @Injectable()
-export class DatabaseService {
+export class DatabaseService implements OnModuleInit {
     private pool: Pool;
 
     constructor(private configService: ConfigService) {
@@ -36,6 +36,20 @@ export class DatabaseService {
 
     async query(text: string, params?: any[]) {
         return this.pool.query(text, params);
+    }
+
+    async onModuleInit() {
+        try {
+            await this.query(`
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code VARCHAR(6);
+            `);
+            await this.query(`
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code_expires_at TIMESTAMP WITH TIME ZONE;
+            `);
+            console.log('✅ Database Schema verified: reset_code columns are present in users table.');
+        } catch (error) {
+            console.error('❌ Error verifying/updating database schema:', error);
+        }
     }
 
     async onModuleDestroy() {

@@ -1,10 +1,12 @@
-import { Injectable, ConflictException, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, ConflictException, BadRequestException, UnauthorizedException, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { DatabaseService } from '../database/database.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginDto, AppleLoginDto } from './dto/social-login.dto';
+import { ForgotPasswordDto, ResetPasswordDto } from './dto/forgot-password.dto';
+import { MailService } from './mail.service';
 import * as bcrypt from 'bcrypt';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
@@ -18,6 +20,7 @@ export class AuthService {
         private readonly databaseService: DatabaseService,
         private readonly jwtService: JwtService,
         private readonly configService: ConfigService,
+        private readonly mailService: MailService,
     ) { }
 
     private async generateTokens(userId: number, email: string) {
@@ -287,6 +290,65 @@ export class AuthService {
                 email: user.email,
             },
             ...tokens,
+        };
+    }
+
+    async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
+        const { email } = forgotPasswordDto;
+        const user = await this.usersService.findOneByEmail(email);
+        if (!user) {
+            throw new NotFoundException('User with this email does not exist.');
+        }
+
+        // Generate a 6-digit verification code
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = new Date();
+        expiresAt.setMinutes(expiresAt.getMinutes() + 15); // Valid for 15 minutes
+
+        // Save code and expiresAt in user record
+        await this.databaseService.query(
+            'UPDATE users SET reset_code = $1, reset_code_expires_at = $2 WHERE id = $3',
+            [code, expiresAt, user.id]
+        );
+
+        // Send code via email
+        await this.mailService.sendResetCode(email, code);
+
+        return {
+            message: 'Verification code sent successfully',
+            email,
+        };
+    }
+
+    async resetPassword(resetPasswordDto: ResetPasswordDto) {
+        const { email, code, password } = resetPasswordDto;
+        const user = await this.usersService.findOneByEmail(email);
+        if (!user) {
+            throw new NotFoundException('User with this email does not exist.');
+        }
+
+        // Check verification code validity
+        if (!user.reset_code || user.reset_code !== code || !user.reset_code_expires_at) {
+            throw new BadRequestException('Invalid verification code.');
+        }
+
+        const expiry = new Date(user.reset_code_expires_at);
+        if (expiry < new Date()) {
+            throw new BadRequestException('Verification code has expired.');
+        }
+
+        // Hash new password
+        const salt = await bcrypt.genSalt();
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // Update password, clear code and expiry
+        await this.databaseService.query(
+            'UPDATE users SET password = $1, reset_code = NULL, reset_code_expires_at = NULL WHERE id = $2',
+            [hashedPassword, user.id]
+        );
+
+        return {
+            message: 'Password reset successfully. You can now login with your new password.',
         };
     }
 }

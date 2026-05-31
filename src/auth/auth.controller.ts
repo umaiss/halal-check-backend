@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginDto, AppleLoginDto } from './dto/social-login.dto';
+import { ForgotPasswordDto, ResetPasswordDto } from './dto/forgot-password.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -30,6 +31,18 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     async appleLogin(@Body() appleLoginDto: AppleLoginDto) {
         return await this.authService.appleLogin(appleLoginDto);
+    }
+
+    @Post('forgot-password')
+    @HttpCode(HttpStatus.OK)
+    async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+        return await this.authService.forgotPassword(forgotPasswordDto);
+    }
+
+    @Post('reset-password')
+    @HttpCode(HttpStatus.OK)
+    async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+        return await this.authService.resetPassword(resetPasswordDto);
     }
 
     @Post('admin/login')
