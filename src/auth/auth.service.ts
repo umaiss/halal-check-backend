@@ -4,8 +4,12 @@ import { UsersService } from '../users/users.service';
 import { DatabaseService } from '../database/database.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
+import { GoogleLoginDto, AppleLoginDto } from './dto/social-login.dto';
 import * as bcrypt from 'bcrypt';
 import { ConfigService } from '@nestjs/config';
+import { OAuth2Client } from 'google-auth-library';
+import { verifyIdToken as verifyAppleIdToken } from 'apple-signin-auth';
+import { randomBytes } from 'crypto';
 
 @Injectable()
 export class AuthService {
@@ -174,6 +178,115 @@ export class AuthService {
     async logout() {
         return {
             message: 'Logout successful',
+        };
+    }
+
+    async googleLogin(googleLoginDto: GoogleLoginDto) {
+        const { idToken } = googleLoginDto;
+        const webClientId = this.configService.get<string>('GOOGLE_WEB_CLIENT_ID');
+        if (!webClientId) {
+            throw new BadRequestException('Google configuration (GOOGLE_WEB_CLIENT_ID) is missing on the server');
+        }
+
+        let email: string;
+        let name: string;
+
+        try {
+            const client = new OAuth2Client(webClientId);
+            const ticket = await client.verifyIdToken({
+                idToken,
+                audience: webClientId,
+            });
+            const payload = ticket.getPayload();
+            if (!payload || !payload.email) {
+                throw new UnauthorizedException('Invalid Google token payload');
+            }
+            email = payload.email;
+            name = payload.name || payload.email.split('@')[0];
+        } catch (error) {
+            console.error('Google token verification failed:', error);
+            throw new UnauthorizedException('Invalid Google ID Token');
+        }
+
+        // Find or create user
+        let user = await this.usersService.findOneByEmail(email);
+        if (!user) {
+            const randomPassword = randomBytes(16).toString('hex');
+            const salt = await bcrypt.genSalt();
+            const hashedPassword = await bcrypt.hash(randomPassword, salt);
+            
+            user = await this.usersService.create({
+                name,
+                email,
+                password: hashedPassword,
+            });
+        }
+
+        const tokens = await this.generateTokens(user.id, user.email);
+
+        return {
+            message: 'Google login successful',
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+            },
+            ...tokens,
+        };
+    }
+
+    async appleLogin(appleLoginDto: AppleLoginDto) {
+        const { identityToken, name: inputName, email: inputEmail } = appleLoginDto;
+        const appleClientId = this.configService.get<string>('APPLE_CLIENT_ID');
+        if (!appleClientId) {
+            throw new BadRequestException('Apple configuration (APPLE_CLIENT_ID) is missing on the server');
+        }
+
+        let email: string;
+
+        try {
+            const verifiedToken = await verifyAppleIdToken(identityToken, {
+                audience: appleClientId,
+                ignoreExpiration: false,
+            });
+
+            if (!verifiedToken || !verifiedToken.email) {
+                throw new UnauthorizedException('Invalid Apple token payload');
+            }
+            email = verifiedToken.email;
+        } catch (error) {
+            console.error('Apple token verification failed:', error);
+            throw new UnauthorizedException('Invalid Apple Identity Token');
+        }
+
+        // Find or create user
+        let user = await this.usersService.findOneByEmail(email);
+        if (!user) {
+            // Apple only provides user profile (name/email) on the FIRST login.
+            // If they signed in before and removed the app, the client might pass inputName/inputEmail.
+            const name = inputName || email.split('@')[0];
+            
+            const randomPassword = randomBytes(16).toString('hex');
+            const salt = await bcrypt.genSalt();
+            const hashedPassword = await bcrypt.hash(randomPassword, salt);
+
+            user = await this.usersService.create({
+                name,
+                email,
+                password: hashedPassword,
+            });
+        }
+
+        const tokens = await this.generateTokens(user.id, user.email);
+
+        return {
+            message: 'Apple login successful',
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+            },
+            ...tokens,
         };
     }
 }

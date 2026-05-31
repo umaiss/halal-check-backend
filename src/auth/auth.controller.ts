@@ -2,6 +2,7 @@ import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
+import { GoogleLoginDto, AppleLoginDto } from './dto/social-login.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -17,6 +18,18 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     async login(@Body() loginDto: LoginDto) {
         return await this.authService.login(loginDto);
+    }
+
+    @Post('google')
+    @HttpCode(HttpStatus.OK)
+    async googleLogin(@Body() googleLoginDto: GoogleLoginDto) {
+        return await this.authService.googleLogin(googleLoginDto);
+    }
+
+    @Post('apple')
+    @HttpCode(HttpStatus.OK)
+    async appleLogin(@Body() appleLoginDto: AppleLoginDto) {
+        return await this.authService.appleLogin(appleLoginDto);
     }
 
     @Post('admin/login')
