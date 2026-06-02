@@ -13,4 +13,12 @@ export class ImproveCheckDto {
     @IsArray()
     @IsString({ each: true })
     additional_images?: string[];
+
+    @IsOptional()
+    @IsUrl()
+    front_image?: string;
+
+    @IsOptional()
+    @IsUrl()
+    back_image?: string;
 }

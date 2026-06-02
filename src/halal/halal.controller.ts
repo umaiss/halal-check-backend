@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, HttpException, HttpStatus, UseGuards, Request, Patch, Param, ParseIntPipe, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { Controller, Post, Get, Body, HttpException, HttpStatus, UseGuards, Request, Patch, Param, ParseIntPipe, UploadedFiles, UseInterceptors, Query } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { HalalService } from './halal.service';
 import { CheckHalalDto } from './dto/check-halal.dto';
@@ -129,6 +129,24 @@ export class HalalController {
             throw new HttpException(
                 {
                     error: 'Failed to update product with improvement data.',
+                    details: (error as Error).message,
+                },
+                HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
+    @Get('search')
+    async searchProducts(@Query('q') query: string) {
+        if (!query || query.trim().length === 0) {
+            return [];
+        }
+        try {
+            return await this.halalService.searchProducts(query);
+        } catch (error) {
+            throw new HttpException(
+                {
+                    error: 'Failed to search products.',
                     details: (error as Error).message,
                 },
                 HttpStatus.INTERNAL_SERVER_ERROR,

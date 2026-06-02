@@ -17,14 +17,11 @@ export class HalalService {
 
         if (ingredients_hash || product_name) {
             try {
-                // Check if the exact ingredients are already analyzed OR the product name matches
+                // Prioritise exact ingredients match over product name to prevent incorrect cached results for different product variations/flavours.
                 let query = `SELECT * FROM halal_checks WHERE `;
                 const params: any[] = [];
                 
-                if (ingredients_hash && product_name) {
-                    query += `ingredients_hash = $1 OR product_name = $2`;
-                    params.push(ingredients_hash, product_name);
-                } else if (ingredients_hash) {
+                if (ingredients_hash) {
                     query += `ingredients_hash = $1`;
                     params.push(ingredients_hash);
                 } else {
@@ -170,15 +167,17 @@ export class HalalService {
     }
 
     async improveCheck(id: number, improveCheckDto: ImproveCheckDto) {
-        const { barcode_image, manufacturer_image, additional_images } = improveCheckDto;
+        const { barcode_image, manufacturer_image, additional_images, front_image, back_image } = improveCheckDto;
         
         const query = `
             UPDATE halal_checks 
             SET 
                 barcode_image = COALESCE($1, barcode_image),
                 manufacturer_image = COALESCE($2, manufacturer_image),
-                additional_images = COALESCE($3, additional_images)
-            WHERE id = $4
+                additional_images = COALESCE($3, additional_images),
+                front_image = COALESCE($4, front_image),
+                back_image = COALESCE($5, back_image)
+            WHERE id = $6
             RETURNING *
         `;
         
@@ -186,6 +185,8 @@ export class HalalService {
             barcode_image || null,
             manufacturer_image || null,
             additional_images ? JSON.stringify(additional_images) : null,
+            front_image || null,
+            back_image || null,
             id
         ];
         
@@ -196,5 +197,39 @@ export class HalalService {
         }
         
         return result.rows[0];
+    }
+
+    async searchProducts(query: string) {
+        const sqlQuery = `
+            SELECT 
+                id, 
+                product_name, 
+                overall_status, 
+                reasoning, 
+                ingredients_analysis,
+                front_image,
+                back_image,
+                ingredients_image,
+                barcode_image,
+                manufacturer_image,
+                additional_images,
+                created_at
+            FROM halal_checks 
+            WHERE product_name ILIKE $1
+            ORDER BY created_at DESC
+            LIMIT 10
+        `;
+        const values = [`%${query}%`];
+        const result = await this.databaseService.query(sqlQuery, values);
+        
+        return result.rows.map(row => ({
+            ...row,
+            ingredients_analysis: typeof row.ingredients_analysis === 'string'
+                ? JSON.parse(row.ingredients_analysis)
+                : row.ingredients_analysis,
+            additional_images: typeof row.additional_images === 'string'
+                ? JSON.parse(row.additional_images)
+                : row.additional_images,
+        }));
     }
 }
