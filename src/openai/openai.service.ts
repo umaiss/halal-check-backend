@@ -29,6 +29,7 @@ Your task is a comprehensive Halal analysis. Follow these steps meticulously:
 2. **Determine Status (Halal/Haram/Musbooh):** For each extracted component, determine its Halal, Haram, or Musbooh (Doubtful) status based on general Islamic dietary laws. Pay special attention to the *source* of E-codes (e.g., E471/Mono- and diglycerides, which can be animal or plant-derived).
 3. **Provide Source/Note:** For any ingredient or E-code whose status is **Haram** or **Musbooh**, clearly state the potential source (e.g., 'porcine gelatin,' 'alcohol-derived,' 'animal/plant-based, needs source confirmation').
 4. **Overall Status:** Based on the presence of any confirmed **Haram** ingredients, determine the final overall product status (**HARAM**, **HALAL**, or **MUSBOOH**).
+5. **Verify If Ingredients Are Present:** Determine if the input text actually contains readable ingredients, food additives, or product components. If the text is generic conversational text, random words, store information, or does not list any food ingredients/components, you must set the "ingredients_found" field to false. Otherwise, set it to true.
 
 **Crucial Rule:** If an E-code or chemical name has potential animal or alcoholic sources and the source is not specified in the input text, you **must** categorize it as **MUSBOOH** and note the requirement for source confirmation.
 
@@ -36,6 +37,7 @@ You MUST respond with ONLY a valid JSON object in this exact format:
 {
     "overall_status": "HALAL" | "HARAM" | "MUSBOOH",
     "reasoning": "Brief explanation of the overall status",
+    "ingredients_found": true | false,
     "ingredients_analysis": [
         {
             "component_name": "ingredient or E-code name",

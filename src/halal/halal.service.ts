@@ -66,6 +66,17 @@ export class HalalService {
 
         const result = await this.openAIService.checkHalalStatus(text);
 
+        if (result.ingredients_found === false) {
+            console.log('No ingredients found by OpenAI. Skipping database persistence.');
+            return {
+                ...result,
+                id: undefined,
+                front_image: checkHalalDto.front_image,
+                back_image: checkHalalDto.back_image,
+                ingredients_image: checkHalalDto.ingredients_image
+            };
+        }
+
         try {
             const savedResult = await this.saveCheckResult(checkHalalDto, result);
 
