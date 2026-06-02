@@ -31,4 +31,10 @@ export class UsersService {
         ]);
         return result.rows[0];
     }
+
+    async delete(id: number): Promise<boolean> {
+        const query = 'DELETE FROM users WHERE id = $1';
+        const result = await this.databaseService.query(query, [id]);
+        return (result.rowCount ?? 0) > 0;
+    }
 }

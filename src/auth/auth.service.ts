@@ -351,4 +351,14 @@ export class AuthService {
             message: 'Password reset successfully. You can now login with your new password.',
         };
     }
+
+    async deleteAccount(userId: number) {
+        const deleted = await this.usersService.delete(userId);
+        if (!deleted) {
+            throw new NotFoundException('User not found');
+        }
+        return {
+            message: 'Account deleted successfully',
+        };
+    }
 }

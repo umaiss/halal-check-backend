@@ -1,9 +1,10 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Delete, UseGuards, Request } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginDto, AppleLoginDto } from './dto/social-login.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/forgot-password.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -61,5 +62,13 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     async logout() {
         return await this.authService.logout();
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Delete('delete-account')
+    @HttpCode(HttpStatus.OK)
+    async deleteAccount(@Request() req: any) {
+        const userId = req.user.userId;
+        return await this.authService.deleteAccount(userId);
     }
 }
