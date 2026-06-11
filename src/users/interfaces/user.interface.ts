@@ -6,4 +6,5 @@ export interface User {
     created_at?: Date;
     reset_code?: string;
     reset_code_expires_at?: Date;
+    points?: number;
 }

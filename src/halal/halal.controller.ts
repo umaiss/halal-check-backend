@@ -118,13 +118,16 @@ export class HalalController {
         }
     }
 
+    @UseGuards(OptionalJwtAuthGuard)
     @Patch(':id/improve')
     async improveCheck(
+        @Request() req: any,
         @Param('id', ParseIntPipe) id: number,
         @Body() improveCheckDto: ImproveCheckDto
     ) {
+        const userId = req.user?.userId || req.user?.id;
         try {
-            return await this.halalService.improveCheck(id, improveCheckDto);
+            return await this.halalService.improveCheck(id, improveCheckDto, userId);
         } catch (error) {
             throw new HttpException(
                 {

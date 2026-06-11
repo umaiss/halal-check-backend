@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Delete, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Body, HttpCode, HttpStatus, Delete, UseGuards, Request } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
@@ -70,5 +70,13 @@ export class AuthController {
     async deleteAccount(@Request() req: any) {
         const userId = req.user.userId;
         return await this.authService.deleteAccount(userId);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get('me')
+    @HttpCode(HttpStatus.OK)
+    async getMe(@Request() req: any) {
+        const userId = req.user.userId;
+        return await this.authService.getProfile(userId);
     }
 }

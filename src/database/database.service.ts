@@ -46,7 +46,13 @@ export class DatabaseService implements OnModuleInit {
             await this.query(`
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code_expires_at TIMESTAMP WITH TIME ZONE;
             `);
-            console.log('✅ Database Schema verified: reset_code columns are present in users table.');
+            await this.query(`
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS points INT DEFAULT 100;
+            `);
+            await this.query(`
+                UPDATE users SET points = 100 WHERE points IS NULL;
+            `);
+            console.log('✅ Database Schema verified: reset_code and points columns are present in users table.');
         } catch (error) {
             console.error('❌ Error verifying/updating database schema:', error);
         }

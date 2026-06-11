@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ForbiddenException } from '@nestjs/common';
 import { OpenAIService } from '../openai/openai.service';
 import { DatabaseService } from '../database/database.service';
 import { HalalCheckResponse } from '../openai/interfaces/halal-response.interface';
@@ -12,8 +12,17 @@ export class HalalService {
         private readonly databaseService: DatabaseService,
     ) { }
 
-    async checkHalalStatus(checkHalalDto: CheckHalalDto, userId?: number): Promise<HalalCheckResponse & { id?: number }> {
+    async checkHalalStatus(checkHalalDto: CheckHalalDto, userId?: number): Promise<HalalCheckResponse & { id?: number; updated_points?: number }> {
         const { text, ingredients_hash, product_name } = checkHalalDto;
+        let updatedPoints: number | undefined = undefined;
+
+        if (userId) {
+            const userRes = await this.databaseService.query('SELECT points FROM users WHERE id = $1', [userId]);
+            const points = userRes.rows[0]?.points ?? 100;
+            if (points < 5) {
+                throw new ForbiddenException('Insufficient points. You need at least 5 points to scan a product.');
+            }
+        }
 
         if (ingredients_hash || product_name) {
             try {
@@ -38,6 +47,11 @@ export class HalalService {
 
                     if (userId) {
                         await this.saveScanHistory(userId, row.id);
+                        const updateRes = await this.databaseService.query(
+                            'UPDATE users SET points = points - 5 WHERE id = $1 RETURNING points',
+                            [userId]
+                        );
+                        updatedPoints = updateRes.rows[0]?.points;
                     }
 
                     return {
@@ -56,7 +70,8 @@ export class HalalService {
                         additional_images: typeof row.additional_images === 'string'
                             ? JSON.parse(row.additional_images)
                             : row.additional_images,
-                    } as HalalCheckResponse & { id: number };
+                        updated_points: updatedPoints,
+                    } as HalalCheckResponse & { id: number; updated_points?: number };
                 }
             } catch (err) {
                 console.error('Failed to query database for existing hash:', err);
@@ -82,6 +97,11 @@ export class HalalService {
 
             if (userId) {
                 await this.saveScanHistory(userId, savedResult.id);
+                const updateRes = await this.databaseService.query(
+                    'UPDATE users SET points = points - 5 WHERE id = $1 RETURNING points',
+                    [userId]
+                );
+                updatedPoints = updateRes.rows[0]?.points;
             }
 
             return {
@@ -89,7 +109,8 @@ export class HalalService {
                 id: savedResult.id,
                 front_image: checkHalalDto.front_image,
                 back_image: checkHalalDto.back_image,
-                ingredients_image: checkHalalDto.ingredients_image
+                ingredients_image: checkHalalDto.ingredients_image,
+                updated_points: updatedPoints,
             };
         } catch (err) {
             console.error('Failed to save halal check result:', err);
@@ -177,7 +198,7 @@ export class HalalService {
         }));
     }
 
-    async improveCheck(id: number, improveCheckDto: ImproveCheckDto) {
+    async improveCheck(id: number, improveCheckDto: ImproveCheckDto, userId?: number) {
         const { barcode_image, manufacturer_image, additional_images, front_image, back_image } = improveCheckDto;
         
         const query = `
@@ -206,8 +227,23 @@ export class HalalService {
         if (result.rows.length === 0) {
             throw new Error('Product not found');
         }
+
+        let updatedPoints: number | undefined = undefined;
+        if (userId) {
+            const hasProvidedImage = barcode_image || manufacturer_image || front_image || back_image || (additional_images && additional_images.length > 0);
+            if (hasProvidedImage) {
+                const updateRes = await this.databaseService.query(
+                    'UPDATE users SET points = points + 10 WHERE id = $1 RETURNING points',
+                    [userId]
+                );
+                updatedPoints = updateRes.rows[0]?.points;
+            }
+        }
         
-        return result.rows[0];
+        return {
+            ...result.rows[0],
+            updated_points: updatedPoints,
+        };
     }
 
     async searchProducts(query: string) {

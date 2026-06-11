@@ -67,6 +67,7 @@ export class AuthService {
                         id: newUser.id,
                         name: newUser.name,
                         email: newUser.email,
+                        points: newUser.points,
                     },
                     ...tokens,
                 };
@@ -104,6 +105,7 @@ export class AuthService {
                 id: user.id,
                 name: user.name,
                 email: user.email,
+                points: user.points,
             },
             ...tokens,
         };
@@ -131,6 +133,7 @@ export class AuthService {
                     id: user.id,
                     name: user.name,
                     email: user.email,
+                    points: user.points,
                 },
                 ...tokens,
             };
@@ -233,6 +236,7 @@ export class AuthService {
                 id: user.id,
                 name: user.name,
                 email: user.email,
+                points: user.points,
             },
             ...tokens,
         };
@@ -288,6 +292,7 @@ export class AuthService {
                 id: user.id,
                 name: user.name,
                 email: user.email,
+                points: user.points,
             },
             ...tokens,
         };
@@ -359,6 +364,19 @@ export class AuthService {
         }
         return {
             message: 'Account deleted successfully',
+        };
+    }
+
+    async getProfile(userId: number) {
+        const user = await this.usersService.findOneById(userId);
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+        return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            points: user.points,
         };
     }
 }
