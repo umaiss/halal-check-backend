@@ -416,6 +416,13 @@ export class AdminPanelService implements OnModuleInit {
                         data: { productId: String(productId), newStatus },
                     });
                     console.log(`🔥 [FCM Multicast Push Sent] Success: ${response.successCount}, Failure: ${response.failureCount}`);
+                    if (response.failureCount > 0) {
+                        response.responses.forEach((resp, idx) => {
+                            if (!resp.success) {
+                                console.error(`❌ FCM Multicast Error [token index ${idx}]:`, resp.error);
+                            }
+                        });
+                    }
                 }
             } else {
                 for (const user of users) {
