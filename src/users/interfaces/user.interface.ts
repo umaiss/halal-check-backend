@@ -7,4 +7,5 @@ export interface User {
     reset_code?: string;
     reset_code_expires_at?: Date;
     points?: number;
+    fcm_token?: string;
 }

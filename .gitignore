@@ -40,3 +40,6 @@ npmbuild.sh
 
 .env
 .env.local
+
+# Firebase service account credentials
+firebase-service-account.json

@@ -52,7 +52,10 @@ export class DatabaseService implements OnModuleInit {
             await this.query(`
                 UPDATE users SET points = 100 WHERE points IS NULL;
             `);
-            console.log('✅ Database Schema verified: reset_code and points columns are present in users table.');
+            await this.query(`
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS fcm_token VARCHAR(255);
+            `);
+            console.log('✅ Database Schema verified: reset_code, points, and fcm_token columns are present in users table.');
         } catch (error) {
             console.error('❌ Error verifying/updating database schema:', error);
         }

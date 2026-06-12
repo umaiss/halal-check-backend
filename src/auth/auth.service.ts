@@ -379,4 +379,12 @@ export class AuthService {
             points: user.points,
         };
     }
+
+    async updateFcmToken(userId: number, fcmToken: string) {
+        await this.databaseService.query(
+            'UPDATE users SET fcm_token = $1 WHERE id = $2',
+            [fcmToken, userId]
+        );
+        return { message: 'FCM token updated successfully' };
+    }
 }

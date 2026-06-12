@@ -1,15 +1,39 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, OnModuleInit } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { S3Service } from '../s3/s3.service';
 import * as fs from 'fs';
+import * as path from 'path';
+import { App, initializeApp, cert } from 'firebase-admin';
+import { getMessaging } from 'firebase-admin/messaging';
 import { ReviewProductDto } from './dto/review-product.dto';
 
 @Injectable()
-export class AdminPanelService {
+export class AdminPanelService implements OnModuleInit {
+    private firebaseApp: App | null = null;
+
     constructor(
         private readonly databaseService: DatabaseService,
         private readonly s3Service: S3Service,
     ) { }
+
+    onModuleInit() {
+        const credentialsPath = process.env.FIREBASE_CREDENTIALS_PATH || 'firebase-service-account.json';
+        const absolutePath = path.resolve(process.cwd(), credentialsPath);
+
+        if (fs.existsSync(absolutePath)) {
+            try {
+                const serviceAccount = JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
+                this.firebaseApp = initializeApp({
+                    credential: cert(serviceAccount),
+                }, 'halal-checker-push-app');
+                console.log('🔥 Firebase Admin initialized successfully for push notifications');
+            } catch (error) {
+                console.error('❌ Failed to initialize Firebase Admin SDK:', error);
+            }
+        } else {
+            console.warn(`⚠️ Firebase credentials file not found at: ${absolutePath}. Simulated console logs will be used for push notifications.`);
+        }
+    }
 
     async getAllScannedProducts(user: any) {
         // JOIN admin_users so the admin can see which assignee reviewed each product
@@ -235,7 +259,7 @@ export class AdminPanelService {
 
     async reviewProduct(id: number, userId: string, userRole: string, reviewDto: ReviewProductDto) {
         // Fetch product to verify ownership if they are an assignee
-        const selectQuery = `SELECT assigned_to_id FROM halal_checks WHERE id = $1`;
+        const selectQuery = `SELECT assigned_to_id, overall_status, product_name FROM halal_checks WHERE id = $1`;
         const selectResult = await this.databaseService.query(selectQuery, [id]);
 
         if (selectResult.rows.length === 0) {
@@ -254,6 +278,8 @@ export class AdminPanelService {
 
         // overall_status is used by the mobile app — update it to reflect the final verdict.
         const overallStatus = status.toUpperCase() === 'MUSHBOOH' ? 'MUSBOOH' : status.toUpperCase();
+
+        const isStatusChanged = product.overall_status !== overallStatus;
 
         let queryFields = `
             status = $1,
@@ -284,6 +310,13 @@ export class AdminPanelService {
         `;
 
         const updateResult = await this.databaseService.query(updateQuery, params);
+
+        if (isStatusChanged) {
+            this.sendPushNotifications(id, product.product_name, overallStatus).catch(err => {
+                console.error('Failed to trigger push notifications:', err);
+            });
+        }
+
         const row = updateResult.rows[0];
         const parsedProduct = {
             ...row,
@@ -350,6 +383,52 @@ export class AdminPanelService {
             mushbooh: Number(row.mushbooh_count),
             pending: Number(row.pending_count),
         };
+    }
+
+    async sendPushNotifications(productId: number, productName: string, newStatus: string) {
+        try {
+            // Find all users who scanned this product and have an fcm_token
+            const usersQuery = `
+                SELECT DISTINCT u.id, u.fcm_token, u.name 
+                FROM user_scan_history ush
+                JOIN users u ON ush.user_id = u.id
+                WHERE ush.halal_check_id = $1 AND u.fcm_token IS NOT NULL
+            `;
+            const result = await this.databaseService.query(usersQuery, [productId]);
+            const users = result.rows;
+
+            if (users.length === 0) {
+                console.log(`[Notification] No users to notify for product status change of ID: ${productId}`);
+                return;
+            }
+
+            const title = 'Product Status Updated';
+            const body = `The status of "${productName || `Product #${productId}`}" has been updated to ${newStatus.toUpperCase()}.`;
+
+            console.log(`[Notification] Sending status update notifications for product: ${productName || productId} to ${users.length} users.`);
+
+            if (this.firebaseApp) {
+                const tokens = users.map(user => user.fcm_token).filter(Boolean);
+                if (tokens.length > 0) {
+                    const response = await getMessaging(this.firebaseApp).sendEachForMulticast({
+                        tokens,
+                        notification: { title, body },
+                        data: { productId: String(productId), newStatus },
+                    });
+                    console.log(`🔥 [FCM Multicast Push Sent] Success: ${response.successCount}, Failure: ${response.failureCount}`);
+                }
+            } else {
+                for (const user of users) {
+                    console.log(`🔔 [PUSH NOTIFICATION SIMULATED] To User ID: ${user.id} (${user.name})`);
+                    console.log(`   Token: ${user.fcm_token}`);
+                    console.log(`   Title: ${title}`);
+                    console.log(`   Body: ${body}`);
+                    console.log(`   Data:`, { productId: String(productId), newStatus });
+                }
+            }
+        } catch (error) {
+            console.error('Failed to send push notifications:', error);
+        }
     }
 }
 
