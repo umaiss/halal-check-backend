@@ -250,40 +250,52 @@ export class AdminPanelService {
             }
         }
 
-        const { status, reasoning, attachments } = reviewDto;
+        const { status, reasoning, attachments, ingredients_analysis } = reviewDto;
 
         // overall_status is used by the mobile app — update it to reflect the final verdict.
         const overallStatus = status.toUpperCase() === 'MUSHBOOH' ? 'MUSBOOH' : status.toUpperCase();
 
-        let updateResult;
+        let queryFields = `
+            status = $1,
+            reasoning = $2,
+            overall_status = $3,
+            reviewed_at = CURRENT_TIMESTAMP
+        `;
+        const params: any[] = [status, reasoning, overallStatus, id];
+        let paramIndex = 5;
+
         if (attachments !== undefined) {
-            const updateQuery = `
-                UPDATE halal_checks 
-                SET 
-                    status = $1,
-                    reasoning = $2,
-                    overall_status = $3,
-                    reviewed_at = CURRENT_TIMESTAMP,
-                    review_attachments = $5
-                WHERE id = $4
-                RETURNING *
-            `;
-            updateResult = await this.databaseService.query(updateQuery, [status, reasoning, overallStatus, id, attachments]);
-        } else {
-            const updateQuery = `
-                UPDATE halal_checks 
-                SET 
-                    status = $1,
-                    reasoning = $2,
-                    overall_status = $3,
-                    reviewed_at = CURRENT_TIMESTAMP
-                WHERE id = $4
-                RETURNING *
-            `;
-            updateResult = await this.databaseService.query(updateQuery, [status, reasoning, overallStatus, id]);
+            queryFields += `, review_attachments = $${paramIndex}`;
+            params.push(attachments);
+            paramIndex++;
         }
 
-        return { message: 'Product review submitted successfully', product: updateResult.rows[0] };
+        if (ingredients_analysis !== undefined) {
+            queryFields += `, ingredients_analysis = $${paramIndex}`;
+            params.push(typeof ingredients_analysis === 'object' ? JSON.stringify(ingredients_analysis) : ingredients_analysis);
+            paramIndex++;
+        }
+
+        const updateQuery = `
+            UPDATE halal_checks 
+            SET ${queryFields}
+            WHERE id = $4
+            RETURNING *
+        `;
+
+        const updateResult = await this.databaseService.query(updateQuery, params);
+        const row = updateResult.rows[0];
+        const parsedProduct = {
+            ...row,
+            ingredients_analysis: typeof row.ingredients_analysis === 'string'
+                ? JSON.parse(row.ingredients_analysis)
+                : row.ingredients_analysis,
+            additional_images: typeof row.additional_images === 'string'
+                ? JSON.parse(row.additional_images)
+                : row.additional_images,
+        };
+
+        return { message: 'Product review submitted successfully', product: parsedProduct };
     }
 
     async uploadAttachments(id: number, files: Array<Express.Multer.File>) {

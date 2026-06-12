@@ -24,4 +24,8 @@ export class ReviewProductDto {
   @IsOptional()
   @IsString({ each: true })
   attachments?: string[];
+
+  @IsArray()
+  @IsOptional()
+  ingredients_analysis?: any[];
 }
